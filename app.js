@@ -845,7 +845,7 @@ class LocationTrackerApp {
     async fetchRoute(start, end) {
         const startCoords = `${start.lng},${start.lat}`;
         const endCoords = `${end.lng},${end.lat}`;
-        const url = `http://router.project-osrm.org/route/v1/driving/${startCoords};${endCoords}?overview=full&geometries=geojson`;
+        const url = `https://router.project-osrm.org/route/v1/driving/${startCoords};${endCoords}?overview=full&geometries=geojson`;
 
         try {
             const response = await fetch(url);
