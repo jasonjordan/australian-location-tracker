@@ -17,6 +17,7 @@ class LocationTrackerApp {
         this.cacheBuster = Date.now();
         this.initialZoomDone = false;
         this.isDynamicallyZooming = false;
+        this.currentRouteLayer = null;
         
         // Initialize after a small delay to ensure DOM is ready
         setTimeout(() => this.init(), 100);
@@ -448,18 +449,36 @@ class LocationTrackerApp {
             let imageUrl = null;
             let summary = '';
 
-            // 1. Find image URL from infobox
+            // 1. Find image URL
             const infoboxRegex = /<table class="infobox.*?<\/table>/s;
+            const thumbRegex = /<div class="thumbinner".*?<\/div>/s;
+            const imgRegex = /<img.*?src="(.*?)"/;
+
+            let imageSourceHtml = null;
             const infoboxMatch = html.match(infoboxRegex);
             if (infoboxMatch) {
-                const imgRegex = /<img.*?src="(.*?)"/;
-                const imgMatch = infoboxMatch[0].match(imgRegex);
-                if (imgMatch && imgMatch[1]) {
-                    imageUrl = 'https:' + imgMatch[1].replace(/_thumb\//, '/'); // Get full size image
+                imageSourceHtml = infoboxMatch[0];
+            } else {
+                const thumbMatch = html.match(thumbRegex);
+                if (thumbMatch) {
+                    imageSourceHtml = thumbMatch[0];
                 }
             }
 
-            // 2. Find summary from the first two paragraphs
+            if (imageSourceHtml) {
+                const imgMatch = imageSourceHtml.match(imgRegex);
+                if (imgMatch && imgMatch[1]) {
+                    let rawUrl = imgMatch[1];
+                    // Handle protocol-relative URLs
+                    if (rawUrl.startsWith('//')) {
+                        rawUrl = 'https:' + rawUrl;
+                    }
+                    // Try to get a larger image from thumbnail URL
+                    imageUrl = rawUrl.replace(/\/thumb\//, '/').replace(/\/\d+px-.*$/, '');
+                }
+            }
+
+            // 2. Find summary from the first paragraphs
             const contentRegex = /<div id="mw-content-text".*?>(.*?)<\/div>/s;
             const contentMatch = html.match(contentRegex);
             if (contentMatch) {
@@ -795,7 +814,7 @@ class LocationTrackerApp {
             icon.addEventListener('click', (e) => {
                 const serviceData = JSON.parse(e.currentTarget.dataset.location || '{}');
                 if (serviceData.lat && serviceData.lng) {
-                    this.navigateToLocation(serviceData.lat, serviceData.lng);
+                    this.showRouteToService(serviceData);
                 }
             });
         });
@@ -821,6 +840,60 @@ class LocationTrackerApp {
     
     navigateToLocation(lat, lng) {
         this.map.setView([lat, lng], 17);
+    }
+
+    async fetchRoute(start, end) {
+        const startCoords = `${start.lng},${start.lat}`;
+        const endCoords = `${end.lng},${end.lat}`;
+        const url = `http://router.project-osrm.org/route/v1/driving/${startCoords};${endCoords}?overview=full&geometries=geojson`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data.code !== 'Ok') {
+                throw new Error(data.message || 'Error fetching route');
+            }
+            // OSRM returns [lon, lat], Leaflet needs [lat, lon]
+            const latlngs = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            return latlngs;
+        } catch (error) {
+            console.error('Error fetching route:', error);
+            alert('Could not fetch the route. Please try again.');
+            return null;
+        }
+    }
+
+    displayRoute(latlngs) {
+        if (this.currentRouteLayer) {
+            this.map.removeLayer(this.currentRouteLayer);
+        }
+        this.currentRouteLayer = L.polyline(latlngs, {
+            color: '#3498db',
+            weight: 5,
+            opacity: 0.8
+        }).addTo(this.map);
+        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1));
+    }
+
+    async showRouteToService(serviceData) {
+        if (!this.currentPosition) {
+            alert('Cannot calculate route without your current location.');
+            return;
+        }
+
+        const start = {
+            lat: this.currentPosition.coords.latitude,
+            lng: this.currentPosition.coords.longitude
+        };
+        const end = {
+            lat: serviceData.lat,
+            lng: serviceData.lng
+        };
+
+        const latlngs = await this.fetchRoute(start, end);
+        if (latlngs) {
+            this.displayRoute(latlngs);
+        }
     }
 }
 

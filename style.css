@@ -212,18 +212,10 @@ body, html {
 
 /* Audio controls */
 #audio-controls {
-    height: 60px;
-    background: linear-gradient(180deg, #1a252f 0%, #000000 100%);
-    display: flex;
-    justify-content: center;
-    align-items: center;
     position: fixed;
-    bottom: 0;
-    width: 100%;
+    top: 20px;
+    left: 20px;
     z-index: 1000;
-    box-shadow: 0 -3px 15px rgba(0, 0, 0, 0.25);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    left: 0;
 }
 
 #audio-toggle {
@@ -283,10 +275,6 @@ body, html {
         height: 80px;
     }
     
-    #audio-controls {
-        height: 55px;
-    }
-    
     #audio-toggle {
         padding: 12px 25px;
         font-size: 16px;
@@ -316,6 +304,7 @@ body, html {
         height: 75px;
     }
 }
+
 
 /* Custom marker styles */
 .user-location-icon {
