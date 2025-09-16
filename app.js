@@ -278,16 +278,13 @@ class LocationTrackerApp {
         const query = `
             [out:json][timeout:25];
             (
-              node["tourism"="attraction"](${south},${west},${north},${east});
-              node["historic"](${south},${west},${north},${east});
-              node["amenity"="theatre"](${south},${west},${north},${east});
-              node["amenity"="cinema"](${south},${west},${north},${east});
-              node["amenity"="museum"](${south},${west},${north},${east});
-              way["tourism"="attraction"](${south},${west},${north},${east});
-              way["historic"](${south},${west},${north},${east});
-              way["amenity"="theatre"](${south},${west},${north},${east});
-              way["amenity"="cinema"](${south},${west},${north},${east});
-              way["amenity"="museum"](${south},${west},${north},${east});
+              node["wikipedia"](${south},${west},${north},${east});
+              way["wikipedia"](${south},${west},${north},${east});
+              node["place"="city"](${south},${west},${north},${east});
+              node["place"="town"](${south},${west},${north},${east});
+              node["natural"="peak"](${south},${west},${north},${east});
+              node["natural"="volcano"](${south},${west},${north},${east});
+              node["waterway"="waterfall"](${south},${west},${north},${east});
             );
             out center;
         `;
@@ -355,16 +352,13 @@ class LocationTrackerApp {
         const query = `
             [out:json][timeout:25];
             (
-              node["tourism"="attraction"](${south},${west},${north},${east});
-              node["historic"](${south},${west},${north},${east});
-              node["amenity"="theatre"](${south},${west},${north},${east});
-              node["amenity"="cinema"](${south},${west},${north},${east});
-              node["amenity"="museum"](${south},${west},${north},${east});
-              way["tourism"="attraction"](${south},${west},${north},${east});
-              way["historic"](${south},${west},${north},${east});
-              way["amenity"="theatre"](${south},${west},${north},${east});
-              way["amenity"="cinema"](${south},${west},${north},${east});
-              way["amenity"="museum"](${south},${west},${north},${east});
+              node["wikipedia"](${south},${west},${north},${east});
+              way["wikipedia"](${south},${west},${north},${east});
+              node["place"="city"](${south},${west},${north},${east});
+              node["place"="town"](${south},${west},${north},${east});
+              node["natural"="peak"](${south},${west},${north},${east});
+              node["natural"="volcano"](${south},${west},${north},${east});
+              node["waterway"="waterfall"](${south},${west},${north},${east});
             );
             out center;
         `;
@@ -395,13 +389,14 @@ class LocationTrackerApp {
         if (this.map.getZoom() < 8) {
             console.log('Dynamic zoom stopped: Reached minimum zoom level.');
             this.isDynamicallyZooming = false;
+            this.displayPOIs(pois); // Display whatever was found
             return;
         }
 
         const elements = await this.fetchPOIsForBounds(this.map.getBounds());
         const pois = this._formatOverpassPois(elements);
 
-        if (pois.length === 0) {
+        if (pois.length < 5) {
             this.map.zoomOut(1, { animate: true });
         } else {
             console.log(`Dynamic zoom finished: Found ${pois.length} POIs.`);
