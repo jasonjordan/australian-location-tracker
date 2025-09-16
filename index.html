@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Australian Location Tracker</title>
     
-    <!-- Leaflet CSS - Using direct CDN links (Cloudflare Pages compatible) -->
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-    
-    <!-- Preload critical resources -->
-    <link rel="preload" href="style.css" as="style">
-    <link rel="preload" href="app.js" as="script">
+    <!-- App CSS -->
+    <link rel="stylesheet" href="style.css">
     
     <!-- Fallback styles while loading -->
     <style>
@@ -92,35 +90,23 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     
-    <!-- Load our app with cache-busting for Cloudflare Pages -->
+    <!-- App JS -->
+    <script src="app.js" defer></script>
+
+    <!-- Simplified loading screen logic -->
     <script>
-        // Cache-busting for our local files on Cloudflare Pages
-        const cacheBuster = Date.now();
-        
-        // Load CSS
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = `style.css?v=${cacheBuster}`;
-        link.onload = () => {
-            document.getElementById('loading-bar').style.width = '50%';
-        };
-        document.head.appendChild(link);
-        
-        // Load JS after CSS
-        const script = document.createElement('script');
-        script.src = `app.js?v=${cacheBuster}`;
-        script.onload = () => {
-            document.getElementById('loading-bar').style.width = '100%';
-            
-            // Hide loading screen after a brief delay
+        window.addEventListener('load', () => {
+             // Hide loading screen after a brief delay
             setTimeout(() => {
-                document.getElementById('loading-screen').style.opacity = '0';
-                setTimeout(() => {
-                    document.getElementById('loading-screen').style.display = 'none';
-                }, 500);
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 500);
+                }
             }, 300);
-        };
-        document.body.appendChild(script);
+        });
     </script>
 </body>
 </html>
