@@ -15,6 +15,7 @@ class LocationTrackerApp {
         this.audio = null;
         this.audioBuffering = false;
         this.cacheBuster = Date.now();
+        this.initialZoomDone = false;
         
         // Initialize after a small delay to ensure DOM is ready
         setTimeout(() => this.init(), 100);
@@ -215,9 +216,15 @@ class LocationTrackerApp {
         
         this.userMarker.setLatLng([lat, lng]);
         
-        // Only pan if we're not too zoomed out
-        if (this.map.getZoom() >= 14) {
-            this.map.panTo([lat, lng], { animate: true, duration: 0.5 });
+        if (!this.initialZoomDone) {
+            this.map.setView([lat, lng], 16);
+            this.initialZoomDone = true;
+            console.log('[DEBUG] Performed initial zoom to user location.');
+        } else {
+            // Only pan if we're not too zoomed out
+            if (this.map.getZoom() >= 14) {
+                this.map.panTo([lat, lng], { animate: true, duration: 0.5 });
+            }
         }
     }
     
@@ -274,7 +281,7 @@ class LocationTrackerApp {
     }
     
     async fetchPOIsFromOverpass(coords) {
-        const bboxSize = 0.01;
+        const bboxSize = 0.1; // Increased search radius
         const south = coords.latitude - bboxSize;
         const north = coords.latitude + bboxSize;
         const west = coords.longitude - bboxSize;
@@ -436,7 +443,7 @@ class LocationTrackerApp {
     }
     
     async fetchServicesFromOverpass(coords) {
-        const bboxSize = 0.03;
+        const bboxSize = 0.1; // Increased search radius
         const south = coords.latitude - bboxSize;
         const north = coords.latitude + bboxSize;
         const west = coords.longitude - bboxSize;
