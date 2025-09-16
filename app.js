@@ -16,16 +16,15 @@ class LocationTrackerApp {
         this.audioBuffering = false;
         this.cacheBuster = Date.now();
         this.initialZoomDone = false;
+        this.isDynamicallyZooming = false;
         
         // Initialize after a small delay to ensure DOM is ready
         setTimeout(() => this.init(), 100);
     }
     
     init() {
-        console.log('[DEBUG] Initializing LocationTrackerApp...');
         // Check if we're running in a secure context (HTTPS)
         if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            console.error('[DEBUG] App requires HTTPS. Halting initialization.');
             alert('This app requires HTTPS for location services. Please access via HTTPS.');
             return;
         }
@@ -37,7 +36,6 @@ class LocationTrackerApp {
         
         // Initialize service worker for offline support (Cloudflare Pages compatible)
         this.setupServiceWorker();
-        console.log('[DEBUG] Initialization complete.');
     }
     
     setupServiceWorker() {
@@ -55,7 +53,6 @@ class LocationTrackerApp {
     }
     
     setupMap() {
-        console.log('[DEBUG] Setting up map...');
         // Initialize Leaflet map
         this.map = L.map('map-container', {
             zoomControl: false // We'll add our own
@@ -128,9 +125,7 @@ class LocationTrackerApp {
     }
     
     startLocationTracking() {
-        console.log('[DEBUG] Starting location tracking...');
         if (navigator.geolocation) {
-            console.log('[DEBUG] Geolocation API is available.');
             navigator.geolocation.watchPosition(
                 (position) => this.onLocationUpdate(position),
                 (error) => this.onLocationError(error),
@@ -141,13 +136,11 @@ class LocationTrackerApp {
                 }
             );
         } else {
-            console.error('[DEBUG] Geolocation is not supported by this browser.');
             alert('Geolocation is not supported by your browser');
         }
     }
     
     onLocationUpdate(position) {
-        console.log('[DEBUG] onLocationUpdate: Received new position.', position);
         this.currentPosition = position;
         
         // Update user marker on map
@@ -175,7 +168,7 @@ class LocationTrackerApp {
     }
     
     onLocationError(error) {
-        console.error('[DEBUG] onLocationError: Geolocation failed.', error);
+        console.error('Location error:', error);
         let message = 'Location access error: ';
         
         switch(error.code) {
@@ -219,7 +212,7 @@ class LocationTrackerApp {
         if (!this.initialZoomDone) {
             this.map.setView([lat, lng], 16);
             this.initialZoomDone = true;
-            console.log('[DEBUG] Performed initial zoom to user location.');
+            this.startDynamicZoom();
         } else {
             // Only pan if we're not too zoomed out
             if (this.map.getZoom() >= 14) {
@@ -234,13 +227,11 @@ class LocationTrackerApp {
     }
     
     async updateSpeedLimit(coords) {
-        console.log('[DEBUG] Updating speed limit...');
         try {
             const speedLimit = await this.fetchSpeedLimitFromOSM(coords);
-            console.log('[DEBUG] Fetched speed limit:', speedLimit);
             this.displaySpeedLimit(speedLimit);
         } catch (error) {
-            console.error('[DEBUG] Failed to fetch speed limit:', error);
+            console.error('Failed to fetch speed limit:', error);
             this.displaySpeedLimit(null);
         }
     }
@@ -254,20 +245,16 @@ class LocationTrackerApp {
     }
     
     async updatePOIs(coords) {
-        console.log('[DEBUG] Updating POIs...');
         const cacheKey = `${Math.round(coords.latitude*1000)},${Math.round(coords.longitude*1000)}`;
         
         if (this.cache.pois[cacheKey] && 
             Date.now() - this.cache.pois[cacheKey].timestamp < 300000) {
-            console.log('[DEBUG] Using cached POIs.');
             this.displayPOIs(this.cache.pois[cacheKey].data);
             return;
         }
         
         try {
-            console.log('[DEBUG] Fetching new POIs from API...');
             const pois = await this.fetchPOIsFromOverpass(coords);
-            console.log('[DEBUG] Successfully fetched POIs:', pois);
             
             this.cache.pois[cacheKey] = {
                 data: pois,
@@ -356,6 +343,68 @@ class LocationTrackerApp {
         return pois.slice(0, 5);
     }
     
+    async fetchPOIsForBounds(bounds) {
+        const south = bounds.getSouth();
+        const west = bounds.getWest();
+        const north = bounds.getNorth();
+        const east = bounds.getEast();
+
+        const query = `
+            [out:json][timeout:25];
+            (
+              node["tourism"="attraction"](${south},${west},${north},${east});
+              node["historic"](${south},${west},${north},${east});
+              node["amenity"="theatre"](${south},${west},${north},${east});
+              node["amenity"="cinema"](${south},${west},${north},${east});
+              node["amenity"="museum"](${south},${west},${north},${east});
+              way["tourism"="attraction"](${south},${west},${north},${east});
+              way["historic"](${south},${west},${north},${east});
+              way["amenity"="theatre"](${south},${west},${north},${east});
+              way["amenity"="cinema"](${south},${west},${north},${east});
+              way["amenity"="museum"](${south},${west},${north},${east});
+            );
+            out center;
+        `;
+
+        // Use CORS proxy for Overpass API
+        const encodedQuery = encodeURIComponent(query);
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Overpass API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.elements.filter(el => el.tags && el.tags.name);
+    }
+
+    startDynamicZoom() {
+        console.log('Starting dynamic zoom to find POIs...');
+        this.isDynamicallyZooming = true;
+        this.findPoisByZoomingOut();
+    }
+
+    async findPoisByZoomingOut() {
+        if (!this.isDynamicallyZooming) return;
+
+        // Safety break to prevent infinite loops
+        if (this.map.getZoom() < 8) {
+            console.log('Dynamic zoom stopped: Reached minimum zoom level.');
+            this.isDynamicallyZooming = false;
+            return;
+        }
+
+        const pois = await this.fetchPOIsForBounds(this.map.getBounds());
+
+        if (pois.length === 0) {
+            this.map.zoomOut(1, { animate: true });
+        } else {
+            console.log('Dynamic zoom finished: POIs found.');
+            this.isDynamicallyZooming = false;
+        }
+    }
+
     generatePOIDescription(tags) {
         if (tags.tourism === 'attraction') {
             return `Tourist attraction${tags.description ? ': ' + tags.description : ''}`;
@@ -416,20 +465,16 @@ class LocationTrackerApp {
     }
     
     async updateServices(coords) {
-        console.log('[DEBUG] Updating services...');
         const cacheKey = `${Math.round(coords.latitude*1000)},${Math.round(coords.longitude*1000)}`;
         
         if (this.cache.services[cacheKey] && 
             Date.now() - this.cache.services[cacheKey].timestamp < 300000) {
-            console.log('[DEBUG] Using cached services.');
             this.displayServices(this.cache.services[cacheKey].data);
             return;
         }
         
         try {
-            console.log('[DEBUG] Fetching new services from API...');
             const services = await this.fetchServicesFromOverpass(coords);
-            console.log('[DEBUG] Successfully fetched services:', services);
             
             this.cache.services[cacheKey] = {
                  services,
@@ -453,9 +498,9 @@ class LocationTrackerApp {
             [out:json][timeout:25];
             (
               node["amenity"="fuel"](${south},${west},${north},${east});
-              node["amenity"="hospital"]["emergency"="yes"](${south},${west},${north},${east});
-              node["amenity"="hospital"]["emergency"="emergency"](${south},${west},${north},${east});
+              node["amenity"="hospital"](${south},${west},${north},${east});
               node["amenity"="cafe"](${south},${west},${north},${east});
+              node["amenity"="restaurant"](${south},${west},${north},${east});
               node["amenity"="toilets"](${south},${west},${north},${east});
             );
             out;
@@ -492,7 +537,6 @@ class LocationTrackerApp {
             }
             
             if (node.tags.amenity === 'hospital' && 
-                (node.tags.emergency === 'yes' || node.tags.emergency === 'emergency') && 
                 (!services.hospital || distance < services.hospital.distance)) {
                 services.hospital = {
                     name: node.tags.name || 'Hospital',
@@ -502,9 +546,9 @@ class LocationTrackerApp {
                 };
             }
             
-            if (node.tags.amenity === 'cafe' && (!services.cafe || distance < services.cafe.distance)) {
+            if ((node.tags.amenity === 'cafe' || node.tags.amenity === 'restaurant') && (!services.cafe || distance < services.cafe.distance)) {
                 services.cafe = {
-                    name: node.tags.name || 'Cafe',
+                    name: node.tags.name || (node.tags.amenity === 'cafe' ? 'Cafe' : 'Restaurant'),
                     distance: distance,
                     lat: node.lat,
                     lng: node.lon
@@ -604,6 +648,12 @@ class LocationTrackerApp {
     }
     
     setupEventListeners() {
+        this.map.on('zoomend', () => {
+            if (this.isDynamicallyZooming) {
+                this.findPoisByZoomingOut();
+            }
+        });
+
         document.querySelector('.close').addEventListener('click', () => {
             document.getElementById('poi-modal').style.display = 'none';
         });
@@ -654,15 +704,12 @@ class LocationTrackerApp {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('[DEBUG] DOM fully loaded and parsed.');
     // Check for browser compatibility
     if (!('geolocation' in navigator)) {
-        console.error('[DEBUG] Geolocation not supported, cannot initialize app.');
         document.getElementById('loading-screen').innerHTML = '<div style="text-align:center; padding:50px;"><h2>Geolocation Not Supported</h2><p>This app requires geolocation support. Please use a modern browser.</p></div>';
         return;
     }
     
     // Initialize the app
-    console.log('[DEBUG] Initializing app from DOMContentLoaded.');
     window.app = new LocationTrackerApp();
 });
