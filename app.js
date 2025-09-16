@@ -413,7 +413,6 @@ class LocationTrackerApp {
         if (tags.tourism === 'attraction') {
             return `Tourist attraction${tags.description ? ': ' + tags.description : ''}`;
         }
-        }
         if (tags.historic) {
             return `Historic ${tags.historic}${tags.description ? ': ' + tags.description : ''}`;
         }
