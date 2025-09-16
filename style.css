@@ -145,6 +145,15 @@ body, html {
     transform: translateY(0);
 }
 
+#poi-image {
+    width: 100%;
+    height: auto;
+    max-height: 40vh;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
 /* Services bar */
 #services-bar {
     display: flex;
