@@ -211,13 +211,13 @@ class LocationTrackerApp {
         this.userMarker.setLatLng([lat, lng]);
         
         if (!this.initialZoomDone) {
-            this.map.setView([lat, lng], 16, { animate: true, duration: 1 });
+            this.map.setView([lat, lng], 16, { animate: true, duration: 1.5 });
             this.initialZoomDone = true;
             this.startDynamicZoom();
         } else {
             // Only pan if we're not too zoomed out
             if (this.map.getZoom() >= 14) {
-                this.map.panTo([lat, lng], { animate: true, duration: 1 });
+                this.map.panTo([lat, lng], { animate: true, duration: 1.5 });
             }
         }
     }
@@ -492,7 +492,10 @@ class LocationTrackerApp {
                 className: 'poi-label'
             }).openTooltip();
             
-            marker.on('click', () => this.showPOIModal(poi));
+            // Only allow clicking on POIs that have a Wikipedia page to enrich
+            if (poi.tags.wikipedia) {
+                marker.on('click', () => this.showPOIModal(poi));
+            }
             this.poiMarkers.push(marker);
         });
 
@@ -527,7 +530,7 @@ class LocationTrackerApp {
             closestMarker.bindPopup(`<b>${closestMarker.poiData.name}</b><br>${closestMarker.poiData.description}`).openPopup();
 
             // Pan the map to ensure the popup is not hidden by the services bar
-            this.map.panBy([0, -100], { animate: true });
+            this.map.panBy([0, -100], { animate: true, duration: 1 });
         }
     }
     
@@ -806,7 +809,7 @@ class LocationTrackerApp {
     }
     
     navigateToLocation(lat, lng) {
-        this.map.setView([lat, lng], 17, { animate: true, duration: 1 });
+        this.map.setView([lat, lng], 17, { animate: true, duration: 1.5 });
     }
 
     async fetchRoute(start, end) {
@@ -839,7 +842,7 @@ class LocationTrackerApp {
             weight: 5,
             opacity: 0.8
         }).addTo(this.map);
-        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1), { animate: true, duration: 1 });
+        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1), { animate: true, duration: 1.5 });
     }
 
     async showRouteToService(serviceData) {

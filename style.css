@@ -61,7 +61,7 @@ body, html {
 
 .modal-content {
     background-color: #ffffff;
-    margin: 15% auto;
+    margin: 5vh auto;
     padding: 30px;
     border-radius: 16px;
     width: 90%;
@@ -69,6 +69,8 @@ body, html {
     box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
     position: relative;
     animation: modalFadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 @keyframes modalFadeIn {
