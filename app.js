@@ -412,6 +412,25 @@ class LocationTrackerApp {
     generatePOIDescription(tags) {
         if (tags.tourism === 'attraction') {
             return `Tourist attraction${tags.description ? ': ' + tags.description : ''}`;
+        }
+        }
+        if (tags.historic) {
+            return `Historic ${tags.historic}${tags.description ? ': ' + tags.description : ''}`;
+        }
+        if (tags.amenity === 'museum') {
+            return `Museum${tags.description ? ': ' + tags.description : ''}`;
+        }
+        if (tags.amenity === 'theatre') {
+            return `Theatre${tags.description ? ': ' + tags.description : ''}`;
+        }
+        if (tags.amenity === 'cinema') {
+            return `Cinema${tags.description ? ': ' + tags.description : ''}`;
+        }
+
+        return Object.keys(tags)
+            .filter(key => !['name', 'wikidata', 'wikipedia'].includes(key))
+            .map(key => `${key}: ${tags[key]}`)
+            .join(', ');
     }
 
     async enrichPoiWithWikipediaData(poi) {
@@ -465,24 +484,6 @@ class LocationTrackerApp {
             console.error(`Failed to enrich POI data for ${poi.name}:`, error);
             return poi; // Return original POI on error
         }
-        }
-        if (tags.historic) {
-            return `Historic ${tags.historic}${tags.description ? ': ' + tags.description : ''}`;
-        }
-        if (tags.amenity === 'museum') {
-            return `Museum${tags.description ? ': ' + tags.description : ''}`;
-        }
-        if (tags.amenity === 'theatre') {
-            return `Theatre${tags.description ? ': ' + tags.description : ''}`;
-        }
-        if (tags.amenity === 'cinema') {
-            return `Cinema${tags.description ? ': ' + tags.description : ''}`;
-        }
-        
-        return Object.keys(tags)
-            .filter(key => !['name', 'wikidata', 'wikipedia'].includes(key))
-            .map(key => `${key}: ${tags[key]}`)
-            .join(', ');
     }
     
     displayPOIs(pois) {
