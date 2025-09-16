@@ -490,7 +490,18 @@ class LocationTrackerApp {
 
             marker.poiData = poi; // Attach POI data to the marker
 
-            marker.bindTooltip(poi.name, {
+            let labelText = poi.name;
+            if (this.currentPosition) {
+                const distance = this.calculateDistance(
+                    this.currentPosition.coords.latitude,
+                    this.currentPosition.coords.longitude,
+                    poi.lat,
+                    poi.lng
+                ) / 1000; // Convert to km
+                labelText += ` (${distance.toFixed(1)} km)`;
+            }
+
+            marker.bindTooltip(labelText, {
                 permanent: true,
                 direction: 'top',
                 offset: [0, -10],
