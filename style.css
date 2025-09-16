@@ -9,7 +9,7 @@ body, html {
 
 #map-container {
     width: 100%;
-    height: calc(100vh - 150px);
+    height: 100vh;
     position: relative;
     z-index: 1;
 }

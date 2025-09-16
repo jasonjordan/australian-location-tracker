@@ -81,6 +81,9 @@ class LocationTrackerApp {
                 iconAnchor: [11, 11]
             })
         }).addTo(this.map);
+
+        // A short delay before invalidating size ensures the map container has its final dimensions
+        setTimeout(() => this.map.invalidateSize(), 400);
     }
     
     setupAudio() {
