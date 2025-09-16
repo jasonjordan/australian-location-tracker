@@ -211,13 +211,13 @@ class LocationTrackerApp {
         this.userMarker.setLatLng([lat, lng]);
         
         if (!this.initialZoomDone) {
-            this.map.setView([lat, lng], 16);
+            this.map.setView([lat, lng], 16, { animate: true, duration: 1 });
             this.initialZoomDone = true;
             this.startDynamicZoom();
         } else {
             // Only pan if we're not too zoomed out
             if (this.map.getZoom() >= 14) {
-                this.map.panTo([lat, lng], { animate: true, duration: 0.5 });
+                this.map.panTo([lat, lng], { animate: true, duration: 1 });
             }
         }
     }
@@ -559,6 +559,9 @@ class LocationTrackerApp {
             // We need to bind a popup before we can open it.
             // The modal is shown on click, but for the closest one, we'll show a simple popup.
             closestMarker.bindPopup(`<b>${closestMarker.poiData.name}</b><br>${closestMarker.poiData.description}`).openPopup();
+
+            // Pan the map to ensure the popup is not hidden by the services bar
+            this.map.panBy([0, -100], { animate: true });
         }
     }
     
@@ -839,7 +842,7 @@ class LocationTrackerApp {
     }
     
     navigateToLocation(lat, lng) {
-        this.map.setView([lat, lng], 17);
+        this.map.setView([lat, lng], 17, { animate: true, duration: 1 });
     }
 
     async fetchRoute(start, end) {
@@ -872,7 +875,7 @@ class LocationTrackerApp {
             weight: 5,
             opacity: 0.8
         }).addTo(this.map);
-        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1));
+        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1), { animate: true, duration: 1 });
     }
 
     async showRouteToService(serviceData) {
