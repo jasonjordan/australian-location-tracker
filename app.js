@@ -429,77 +429,44 @@ class LocationTrackerApp {
     }
 
     async enrichPoiWithWikipediaData(poi) {
-        if (poi.summary && poi.imageUrl) {
-            return poi;
-        }
+        if (poi.summary && poi.imageUrl) return poi;
 
-        if (!poi.url || !poi.url.includes('wikipedia.org')) {
-            return poi;
-        }
+        const wikiTag = poi.tags.wikipedia;
+        if (!wikiTag) return poi;
 
-        console.log(`Enriching POI: ${poi.name} from ${poi.url}`);
+        // Format is often "en:Article Title", so we split and take the last part.
+        const pageTitle = wikiTag.split(':').pop().replace(/ /g, '_');
+        const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${pageTitle}&prop=extracts|pageimages&pithumbsize=400&inprop=url&redirects=&format=json&origin=*&exintro&explaintext`;
+
+        console.log(`Enriching POI: ${poi.name} from Wikipedia API`);
 
         try {
-            const html = await view_text_website(poi.url);
+            const response = await fetch(url);
+            const data = await response.json();
+            const pages = data.query.pages;
+            const page = pages[Object.keys(pages)[0]]; // Get the first (and only) page
+
+            let summary = poi.description;
             let imageUrl = null;
-            let summary = '';
 
-            // 1. Find image URL
-            const infoboxRegex = /<table class="infobox.*?<\/table>/s;
-            const thumbRegex = /<div class="thumbinner".*?<\/div>/s;
-            const imgRegex = /<img.*?src="(.*?)"/;
-
-            let imageSourceHtml = null;
-            const infoboxMatch = html.match(infoboxRegex);
-            if (infoboxMatch) {
-                imageSourceHtml = infoboxMatch[0];
-            } else {
-                const thumbMatch = html.match(thumbRegex);
-                if (thumbMatch) {
-                    imageSourceHtml = thumbMatch[0];
+            if (page.extract) {
+                const words = page.extract.split(/\s+/);
+                if (words.length > 100) {
+                    summary = words.slice(0, 200).join(' ') + (words.length > 200 ? '...' : '');
+                } else {
+                    summary = page.extract;
                 }
             }
 
-            if (imageSourceHtml) {
-                const imgMatch = imageSourceHtml.match(imgRegex);
-                if (imgMatch && imgMatch[1]) {
-                    let rawUrl = imgMatch[1];
-                    // Handle protocol-relative URLs
-                    if (rawUrl.startsWith('//')) {
-                        rawUrl = 'https:' + rawUrl;
-                    }
-                    // Try to get a larger image from thumbnail URL
-                    imageUrl = rawUrl.replace(/\/thumb\//, '/').replace(/\/\d+px-.*$/, '');
-                }
+            if (page.thumbnail && page.thumbnail.source) {
+                imageUrl = page.thumbnail.source;
             }
 
-            // 2. Find summary from the first paragraphs
-            const contentRegex = /<div id="mw-content-text".*?>(.*?)<\/div>/s;
-            const contentMatch = html.match(contentRegex);
-            if (contentMatch) {
-                const pRegex = /<p>.*?<\/p>/g;
-                const pMatches = contentMatch[1].match(pRegex);
-                if (pMatches) {
-                    const fullText = pMatches
-                        .map(p => p.replace(/<.*?>/g, '')) // Strip HTML tags
-                        .map(p => p.replace(/\[\d+\]/g, '')) // Strip citation numbers
-                        .join(' ')
-                        .trim();
-
-                    const words = fullText.split(/\s+/);
-                    if (words.length > 100) {
-                        summary = words.slice(0, 200).join(' ') + (words.length > 200 ? '...' : '');
-                    } else {
-                        summary = words.join(' ');
-                    }
-                }
-            }
-
-            return { ...poi, imageUrl, summary };
+            return { ...poi, summary, imageUrl };
 
         } catch (error) {
             console.error(`Failed to enrich POI data for ${poi.name}:`, error);
-            return poi; // Return original POI on error
+            return poi;
         }
     }
     
