@@ -285,6 +285,7 @@ class LocationTrackerApp {
               node["natural"="peak"](${south},${west},${north},${east});
               node["natural"="volcano"](${south},${west},${north},${east});
               node["waterway"="waterfall"](${south},${west},${north},${east});
+              node["waterway"="dam"](${south},${west},${north},${east});
             );
             out center;
         `;
@@ -359,6 +360,7 @@ class LocationTrackerApp {
               node["natural"="peak"](${south},${west},${north},${east});
               node["natural"="volcano"](${south},${west},${north},${east});
               node["waterway"="waterfall"](${south},${west},${north},${east});
+              node["waterway"="dam"](${south},${west},${north},${east});
             );
             out center;
         `;
