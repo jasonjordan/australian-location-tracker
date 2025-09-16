@@ -146,19 +146,20 @@ body, html {
 /* Services bar */
 #services-bar {
     display: flex;
-    justify-content: space-around;
+    justify-content: center;
     align-items: center;
-    height: 90px;
-    background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%);
-    padding: 10px 0;
+    gap: 15px;
+    background: rgba(44, 62, 80, 0.9);
+    padding: 8px 20px;
     position: fixed;
-    bottom: 60px;
-    width: 100%;
-    box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.3);
+    bottom: 20px;
+    left: 20px;
+    width: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     z-index: 1000;
-    backdrop-filter: blur(15px);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    left: 0;
+    backdrop-filter: blur(10px);
+    border-radius: 50px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .service-icon {
@@ -271,10 +272,6 @@ body, html {
         margin-top: 6px;
     }
     
-    #services-bar {
-        height: 80px;
-    }
-    
     #audio-toggle {
         padding: 12px 25px;
         font-size: 16px;
@@ -298,10 +295,6 @@ body, html {
     
     .service-icon .distance {
         font-size: 12px;
-    }
-    
-    #services-bar {
-        height: 75px;
     }
 }
 

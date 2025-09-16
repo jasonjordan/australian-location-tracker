@@ -485,13 +485,17 @@ class LocationTrackerApp {
                 const pRegex = /<p>.*?<\/p>/g;
                 const pMatches = contentMatch[1].match(pRegex);
                 if (pMatches) {
-                    const paragraphs = pMatches
+                    const fullText = pMatches
                         .map(p => p.replace(/<.*?>/g, '')) // Strip HTML tags
                         .map(p => p.replace(/\[\d+\]/g, '')) // Strip citation numbers
-                        .filter(p => p.trim().length > 50); // Filter out short/empty paragraphs
+                        .join(' ')
+                        .trim();
 
-                    if (paragraphs.length > 0) {
-                        summary = paragraphs.slice(0, 2).join('\n\n');
+                    const words = fullText.split(/\s+/);
+                    if (words.length > 100) {
+                        summary = words.slice(0, 200).join(' ') + (words.length > 200 ? '...' : '');
+                    } else {
+                        summary = words.join(' ');
                     }
                 }
             }
@@ -632,20 +636,18 @@ class LocationTrackerApp {
     }
     
     async fetchServicesFromOverpass(coords) {
-        const bboxSize = 0.1; // Increased search radius
-        const south = coords.latitude - bboxSize;
-        const north = coords.latitude + bboxSize;
-        const west = coords.longitude - bboxSize;
-        const east = coords.longitude + bboxSize;
-        
+        const lat = coords.latitude;
+        const lon = coords.longitude;
+        const radius = 100000; // 100km radius
+
         const query = `
             [out:json][timeout:25];
             (
-              node["amenity"="fuel"](${south},${west},${north},${east});
-              node["amenity"="hospital"](${south},${west},${north},${east});
-              node["amenity"="cafe"](${south},${west},${north},${east});
-              node["amenity"="restaurant"](${south},${west},${north},${east});
-              node["amenity"="toilets"](${south},${west},${north},${east});
+              node["amenity"="fuel"](around:${radius},${lat},${lon});
+              node["amenity"="hospital"](around:${radius},${lat},${lon});
+              node["amenity"="cafe"](around:${radius},${lat},${lon});
+              node["amenity"="restaurant"](around:${radius},${lat},${lon});
+              node["amenity"="toilets"](around:${radius},${lat},${lon});
             );
             out;
         `;
