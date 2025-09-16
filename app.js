@@ -301,10 +301,13 @@ class LocationTrackerApp {
         }
         
         const data = await response.json();
-        
-        const nodes = data.elements.filter(el => el.type === 'node' && el.tags);
+        const pois = this._formatOverpassPois(data.elements);
+        return pois.slice(0, 5);
+    }
+
+    _formatOverpassPois(elements) {
         const pois = [];
-        
+        const nodes = elements.filter(el => el.type === 'node' && el.tags);
         for (let node of nodes) {
             if (!node.tags.name) continue;
             
@@ -322,7 +325,7 @@ class LocationTrackerApp {
             });
         }
         
-        const ways = data.elements.filter(el => el.type === 'way' && el.tags && el.center);
+        const ways = elements.filter(el => el.type === 'way' && el.tags && el.center);
         for (let way of ways) {
             if (!way.tags.name) continue;
             
@@ -339,10 +342,9 @@ class LocationTrackerApp {
                 tags: way.tags
             });
         }
-        
-        return pois.slice(0, 5);
+        return pois;
     }
-    
+
     async fetchPOIsForBounds(bounds) {
         const south = bounds.getSouth();
         const west = bounds.getWest();
@@ -395,19 +397,74 @@ class LocationTrackerApp {
             return;
         }
 
-        const pois = await this.fetchPOIsForBounds(this.map.getBounds());
+        const elements = await this.fetchPOIsForBounds(this.map.getBounds());
+        const pois = this._formatOverpassPois(elements);
 
         if (pois.length === 0) {
             this.map.zoomOut(1, { animate: true });
         } else {
-            console.log('Dynamic zoom finished: POIs found.');
+            console.log(`Dynamic zoom finished: Found ${pois.length} POIs.`);
             this.isDynamicallyZooming = false;
+            this.displayPOIs(pois);
         }
     }
 
     generatePOIDescription(tags) {
         if (tags.tourism === 'attraction') {
             return `Tourist attraction${tags.description ? ': ' + tags.description : ''}`;
+    }
+
+    async enrichPoiWithWikipediaData(poi) {
+        if (poi.summary && poi.imageUrl) {
+            return poi;
+        }
+
+        if (!poi.url || !poi.url.includes('wikipedia.org')) {
+            return poi;
+        }
+
+        console.log(`Enriching POI: ${poi.name} from ${poi.url}`);
+
+        try {
+            const html = await view_text_website(poi.url);
+            let imageUrl = null;
+            let summary = '';
+
+            // 1. Find image URL from infobox
+            const infoboxRegex = /<table class="infobox.*?<\/table>/s;
+            const infoboxMatch = html.match(infoboxRegex);
+            if (infoboxMatch) {
+                const imgRegex = /<img.*?src="(.*?)"/;
+                const imgMatch = infoboxMatch[0].match(imgRegex);
+                if (imgMatch && imgMatch[1]) {
+                    imageUrl = 'https:' + imgMatch[1].replace(/_thumb\//, '/'); // Get full size image
+                }
+            }
+
+            // 2. Find summary from the first two paragraphs
+            const contentRegex = /<div id="mw-content-text".*?>(.*?)<\/div>/s;
+            const contentMatch = html.match(contentRegex);
+            if (contentMatch) {
+                const pRegex = /<p>.*?<\/p>/g;
+                const pMatches = contentMatch[1].match(pRegex);
+                if (pMatches) {
+                    const paragraphs = pMatches
+                        .map(p => p.replace(/<.*?>/g, '')) // Strip HTML tags
+                        .map(p => p.replace(/\[\d+\]/g, '')) // Strip citation numbers
+                        .filter(p => p.trim().length > 50); // Filter out short/empty paragraphs
+
+                    if (paragraphs.length > 0) {
+                        summary = paragraphs.slice(0, 2).join('\n\n');
+                    }
+                }
+            }
+
+            return { ...poi, imageUrl, summary };
+
+        } catch (error) {
+            console.error(`Failed to enrich POI data for ${poi.name}:`, error);
+            return poi; // Return original POI on error
+        }
         }
         if (tags.historic) {
             return `Historic ${tags.historic}${tags.description ? ': ' + tags.description : ''}`;
@@ -440,10 +497,50 @@ class LocationTrackerApp {
                     iconAnchor: [9, 9]
                 })
             }).addTo(this.map);
+
+            marker.poiData = poi; // Attach POI data to the marker
+
+            marker.bindTooltip(poi.name, {
+                permanent: true,
+                direction: 'top',
+                offset: [0, -10],
+                className: 'poi-label'
+            }).openTooltip();
             
             marker.on('click', () => this.showPOIModal(poi));
             this.poiMarkers.push(marker);
         });
+
+        this.openClosestPoiPopup();
+    }
+
+    openClosestPoiPopup() {
+        if (!this.currentPosition || this.poiMarkers.length === 0) {
+            return;
+        }
+
+        let closestMarker = null;
+        let minDistance = Infinity;
+
+        this.poiMarkers.forEach(marker => {
+            const distance = this.calculateDistance(
+                this.currentPosition.coords.latitude,
+                this.currentPosition.coords.longitude,
+                marker.poiData.lat,
+                marker.poiData.lng
+            );
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestMarker = marker;
+            }
+        });
+
+        if (closestMarker) {
+            // We need to bind a popup before we can open it.
+            // The modal is shown on click, but for the closest one, we'll show a simple popup.
+            closestMarker.bindPopup(`<b>${closestMarker.poiData.name}</b><br>${closestMarker.poiData.description}`).openPopup();
+        }
     }
     
     clearPOIMarkers() {
@@ -455,13 +552,38 @@ class LocationTrackerApp {
         this.poiMarkers = [];
     }
     
-    showPOIModal(poi) {
-        document.getElementById('poi-title').textContent = poi.name;
-        document.getElementById('poi-description').textContent = poi.description;
-        document.getElementById('poi-link').href = poi.url;
-        document.getElementById('poi-link').textContent = `Learn more about ${poi.name}`;
-        
-        document.getElementById('poi-modal').style.display = 'block';
+    async showPOIModal(poi) {
+        const modal = document.getElementById('poi-modal');
+        const loader = document.getElementById('poi-loader');
+        const content = document.getElementById('poi-content');
+        const titleEl = document.getElementById('poi-title');
+        const descriptionEl = document.getElementById('poi-description');
+        const linkEl = document.getElementById('poi-link');
+        const imageEl = document.getElementById('poi-image');
+
+        // Reset and show loader
+        content.style.display = 'none';
+        loader.style.display = 'block';
+        modal.style.display = 'block';
+
+        const enrichedPoi = await this.enrichPoiWithWikipediaData(poi);
+
+        // Populate content
+        titleEl.textContent = enrichedPoi.name;
+        linkEl.href = enrichedPoi.url;
+        linkEl.textContent = `Learn more about ${enrichedPoi.name}`;
+        descriptionEl.textContent = enrichedPoi.summary || enrichedPoi.description;
+
+        if (enrichedPoi.imageUrl) {
+            imageEl.src = enrichedPoi.imageUrl;
+            imageEl.style.display = 'block';
+        } else {
+            imageEl.style.display = 'none';
+        }
+
+        // Hide loader and show content
+        loader.style.display = 'none';
+        content.style.display = 'block';
     }
     
     async updateServices(coords) {

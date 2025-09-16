@@ -180,14 +180,16 @@ body, html {
     transform: translateY(0) scale(0.98);
 }
 
-.service-icon svg {
-    width: 45px;
-    height: 45px;
+.service-icon i {
+    font-size: 40px;
+    color: white;
     filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
     transition: all 0.3s ease;
+    width: 45px; /* To maintain layout */
+    text-align: center;
 }
 
-.service-icon:hover svg {
+.service-icon:hover i {
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
 }
 
@@ -268,9 +270,8 @@ body, html {
         font-size: 24px;
     }
     
-    .service-icon svg {
-        width: 38px;
-        height: 38px;
+    .service-icon i {
+        font-size: 35px;
     }
     
     .service-icon .distance {
@@ -303,9 +304,8 @@ body, html {
         font-size: 22px;
     }
     
-    .service-icon svg {
-        width: 35px;
-        height: 35px;
+    .service-icon i {
+        font-size: 32px;
     }
     
     .service-icon .distance {
@@ -374,6 +374,19 @@ body, html {
     border-radius: 8px;
     margin: 20px;
     text-align: center;
+}
+
+/* POI Label Styles */
+.poi-label {
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: bold;
+    box-shadow: none;
+    white-space: nowrap;
 }
 
 /* Success states */
