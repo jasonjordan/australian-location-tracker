@@ -285,7 +285,7 @@ class LocationTrackerApp {
         
         // Use CORS proxy for Overpass API
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -437,7 +437,7 @@ class LocationTrackerApp {
         `;
         
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -551,7 +551,7 @@ class LocationTrackerApp {
         `;
         
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
