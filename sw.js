@@ -1,11 +1,14 @@
 // sw.js - Service Worker for Cloudflare Pages
 
-const CACHE_NAME = 'au-location-tracker-v1';
+const CACHE_NAME = 'au-location-tracker-v2'; // Bumped cache version
 const urlsToCache = [
     '/',
     '/index.html',
     '/style.css',
-    '/app.js'
+    '/app.js',
+    '/manifest.json',
+    '/icons/icon-192x192.png',
+    '/icons/icon-512x512.png'
 ];
 
 // Install event

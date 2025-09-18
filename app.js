@@ -15,6 +15,12 @@ class LocationTrackerApp {
         this.audio = null;
         this.audioBuffering = false;
         this.cacheBuster = Date.now();
+        this.initialZoomDone = false;
+        this.isDynamicallyZooming = false;
+        this.currentRouteLayer = null;
+        this.seenPoiIds = new Set();
+        this.exploreModeTimer = null;
+        this.realPosition = null;
         
         // Initialize after a small delay to ensure DOM is ready
         setTimeout(() => this.init(), 100);
@@ -60,6 +66,9 @@ class LocationTrackerApp {
         L.control.zoom({
             position: 'bottomright'
         }).addTo(this.map);
+
+        // Add scale control
+        L.control.scale({ imperial: false }).addTo(this.map);
         
         // Add OpenStreetMap tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -78,6 +87,9 @@ class LocationTrackerApp {
                 iconAnchor: [11, 11]
             })
         }).addTo(this.map);
+
+        // A short delay before invalidating size ensures the map container has its final dimensions
+        setTimeout(() => this.map.invalidateSize(), 400);
     }
     
     setupAudio() {
@@ -139,6 +151,11 @@ class LocationTrackerApp {
     }
     
     onLocationUpdate(position) {
+        // If a real GPS update comes in while in explore mode, exit explore mode
+        if (!position.isFake && this.realPosition) {
+            this.exitExploreMode();
+        }
+
         this.currentPosition = position;
         
         // Update user marker on map
@@ -207,14 +224,24 @@ class LocationTrackerApp {
         
         this.userMarker.setLatLng([lat, lng]);
         
-        // Only pan if we're not too zoomed out
-        if (this.map.getZoom() >= 14) {
-            this.map.panTo([lat, lng], { animate: true, duration: 0.5 });
+        if (!this.initialZoomDone) {
+            this.map.setView([lat, lng], 16, { animate: true, duration: 1.5 });
+            this.initialZoomDone = true;
+            this.startDynamicZoom();
+        } else {
+            // Only pan if we're not too zoomed out
+            if (this.map.getZoom() >= 14) {
+                this.map.panTo([lat, lng], { animate: true, duration: 1.5 });
+            }
         }
     }
     
     updateSpeed(speed) {
-        const speedKmh = speed * 3.6;
+        let speedKmh = speed * 3.6;
+        // Filter out GPS jitter when stationary
+        if (speedKmh < 5) {
+            speedKmh = 0;
+        }
         document.getElementById('current-speed').textContent = `${speedKmh.toFixed(1)} km/h`;
     }
     
@@ -260,7 +287,7 @@ class LocationTrackerApp {
     }
     
     async fetchPOIsFromOverpass(coords) {
-        const bboxSize = 0.01;
+        const bboxSize = 0.1; // Increased search radius
         const south = coords.latitude - bboxSize;
         const north = coords.latitude + bboxSize;
         const west = coords.longitude - bboxSize;
@@ -269,23 +296,15 @@ class LocationTrackerApp {
         const query = `
             [out:json][timeout:25];
             (
-              node["tourism"="attraction"](${south},${west},${north},${east});
-              node["historic"](${south},${west},${north},${east});
-              node["amenity"="theatre"](${south},${west},${north},${east});
-              node["amenity"="cinema"](${south},${west},${north},${east});
-              node["amenity"="museum"](${south},${west},${north},${east});
-              way["tourism"="attraction"](${south},${west},${north},${east});
-              way["historic"](${south},${west},${north},${east});
-              way["amenity"="theatre"](${south},${west},${north},${east});
-              way["amenity"="cinema"](${south},${west},${north},${east});
-              way["amenity"="museum"](${south},${west},${north},${east});
+              node["wikipedia"](${south},${west},${north},${east});
+              way["wikipedia"](${south},${west},${north},${east});
             );
             out center;
         `;
         
         // Use CORS proxy for Overpass API
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -293,10 +312,13 @@ class LocationTrackerApp {
         }
         
         const data = await response.json();
-        
-        const nodes = data.elements.filter(el => el.type === 'node' && el.tags);
+        const pois = this._formatOverpassPois(data.elements);
+        return pois.slice(0, 5);
+    }
+
+    _formatOverpassPois(elements) {
         const pois = [];
-        
+        const nodes = elements.filter(el => el.type === 'node' && el.tags);
         for (let node of nodes) {
             if (!node.tags.name) continue;
             
@@ -314,7 +336,7 @@ class LocationTrackerApp {
             });
         }
         
-        const ways = data.elements.filter(el => el.type === 'way' && el.tags && el.center);
+        const ways = elements.filter(el => el.type === 'way' && el.tags && el.center);
         for (let way of ways) {
             if (!way.tags.name) continue;
             
@@ -331,8 +353,64 @@ class LocationTrackerApp {
                 tags: way.tags
             });
         }
+        return pois;
+    }
+
+    async fetchPOIsForBounds(bounds) {
+        const south = bounds.getSouth();
+        const west = bounds.getWest();
+        const north = bounds.getNorth();
+        const east = bounds.getEast();
         
-        return pois.slice(0, 5);
+        const query = `
+            [out:json][timeout:25];
+            (
+              node["wikipedia"](${south},${west},${north},${east});
+              way["wikipedia"](${south},${west},${north},${east});
+            );
+            out center;
+        `;
+
+        // Use CORS proxy for Overpass API
+        const encodedQuery = encodeURIComponent(query);
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Overpass API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.elements.filter(el => el.tags && el.tags.name);
+    }
+
+    startDynamicZoom() {
+        console.log('Starting dynamic zoom to find POIs...');
+        this.isDynamicallyZooming = true;
+        this.findPoisByZoomingOut();
+    }
+
+    async findPoisByZoomingOut() {
+        if (!this.isDynamicallyZooming) return;
+
+        // Safety break to prevent infinite loops
+        if (this.map.getZoom() < 8) {
+            console.log('Dynamic zoom stopped: Reached minimum zoom level.');
+            this.isDynamicallyZooming = false;
+            this.displayPOIs(pois); // Display whatever was found
+            return;
+        }
+
+        const elements = await this.fetchPOIsForBounds(this.map.getBounds());
+        const pois = this._formatOverpassPois(elements);
+
+        if (pois.length < 5) {
+            this.map.zoomOut(1, { animate: true });
+        } else {
+            console.log(`Dynamic zoom finished: Found ${pois.length} POIs.`);
+            this.isDynamicallyZooming = false;
+            this.displayPOIs(pois);
+        }
     }
     
     generatePOIDescription(tags) {
@@ -357,11 +435,58 @@ class LocationTrackerApp {
             .map(key => `${key}: ${tags[key]}`)
             .join(', ');
     }
+
+    async enrichPoiWithWikipediaData(poi) {
+        if (poi.summary && poi.imageUrl) return poi;
+
+        const wikiTag = poi.tags.wikipedia;
+        if (!wikiTag) return poi;
+
+        // Format is often "en:Article Title", so we split and take the last part.
+        const pageTitle = wikiTag.split(':').pop().replace(/ /g, '_');
+        const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${pageTitle}&prop=extracts|pageimages&pithumbsize=400&inprop=url&redirects=&format=json&origin=*&exintro&explaintext`;
+
+        console.log(`Enriching POI: ${poi.name} from Wikipedia API`);
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            const pages = data.query.pages;
+            const page = pages[Object.keys(pages)[0]]; // Get the first (and only) page
+
+            let summary = poi.description;
+            let imageUrl = null;
+
+            if (page.extract) {
+                const words = page.extract.split(/\s+/);
+                if (words.length > 100) {
+                    summary = words.slice(0, 200).join(' ') + (words.length > 200 ? '...' : '');
+                } else {
+                    summary = page.extract;
+                }
+            }
+
+            if (page.thumbnail && page.thumbnail.source) {
+                imageUrl = page.thumbnail.source;
+            }
+
+            return { ...poi, summary, imageUrl };
+
+        } catch (error) {
+            console.error(`Failed to enrich POI data for ${poi.name}:`, error);
+            return poi;
+        }
+    }
     
     displayPOIs(pois) {
         this.clearPOIMarkers();
         
         pois.forEach(poi => {
+            if (!this.seenPoiIds.has(poi.id)) {
+                this.showNewPoiNotification(poi);
+                this.seenPoiIds.add(poi.id);
+            }
+
             const marker = L.marker([poi.lat, poi.lng], {
                 icon: L.divIcon({
                     className: 'poi-icon',
@@ -370,10 +495,89 @@ class LocationTrackerApp {
                     iconAnchor: [9, 9]
                 })
             }).addTo(this.map);
+
+            marker.poiData = poi; // Attach POI data to the marker
+
+            let labelText = poi.name;
+            if (this.currentPosition) {
+                const distance = this.calculateDistance(
+                    this.currentPosition.coords.latitude,
+                    this.currentPosition.coords.longitude,
+                    poi.lat,
+                    poi.lng
+                ) / 1000; // Convert to km
+                labelText += ` (${distance.toFixed(1)} km)`;
+            }
+
+            marker.bindTooltip(labelText, {
+                permanent: true,
+                direction: 'top',
+                offset: [0, -10],
+                className: 'poi-label'
+            }).openTooltip();
             
-            marker.on('click', () => this.showPOIModal(poi));
+            // Only allow clicking on POIs that have a Wikipedia page to enrich
+            if (poi.tags.wikipedia) {
+                marker.on('click', () => this.showPOIModal(poi));
+            }
             this.poiMarkers.push(marker);
         });
+
+        this.openClosestPoiPopup();
+    }
+
+    showNewPoiNotification(poi) {
+        const notification = document.getElementById('poi-notification');
+        if (!notification) return;
+
+        const distance = this.calculateDistance(
+            this.currentPosition.coords.latitude,
+            this.currentPosition.coords.longitude,
+            poi.lat,
+            poi.lng
+        ) / 1000;
+
+        const friendlyText = `Coming up in ${distance.toFixed(1)} km, we have ${poi.name}. It's known for being a ${poi.description}. Might be worth a look!`;
+
+        notification.innerHTML = `<p style="margin: 0;">${friendlyText}</p>`;
+        notification.classList.add('visible');
+
+        // Hide the notification after 10 seconds
+        setTimeout(() => {
+            notification.classList.remove('visible');
+        }, 10000);
+    }
+
+    openClosestPoiPopup() {
+        if (!this.currentPosition || this.poiMarkers.length === 0) {
+            return;
+        }
+
+        let closestMarker = null;
+        let minDistance = Infinity;
+
+        this.poiMarkers.forEach(marker => {
+            const distance = this.calculateDistance(
+                this.currentPosition.coords.latitude,
+                this.currentPosition.coords.longitude,
+                marker.poiData.lat,
+                marker.poiData.lng
+            );
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestMarker = marker;
+            }
+        });
+
+        if (closestMarker) {
+            // We need to bind a popup before we can open it.
+            // The modal is shown on click, but for the closest one, we'll show a simple popup.
+            closestMarker.bindPopup(`<b>${closestMarker.poiData.name}</b><br>${closestMarker.poiData.description}`).openPopup();
+
+            // Pan the map to ensure the popup is not hidden by the services pill
+            this.map.panBy([150, -100], { animate: true, duration: 1.5 });
+        }
     }
     
     clearPOIMarkers() {
@@ -385,13 +589,38 @@ class LocationTrackerApp {
         this.poiMarkers = [];
     }
     
-    showPOIModal(poi) {
-        document.getElementById('poi-title').textContent = poi.name;
-        document.getElementById('poi-description').textContent = poi.description;
-        document.getElementById('poi-link').href = poi.url;
-        document.getElementById('poi-link').textContent = `Learn more about ${poi.name}`;
-        
-        document.getElementById('poi-modal').style.display = 'block';
+    async showPOIModal(poi) {
+        const modal = document.getElementById('poi-modal');
+        const loader = document.getElementById('poi-loader');
+        const content = document.getElementById('poi-content');
+        const titleEl = document.getElementById('poi-title');
+        const descriptionEl = document.getElementById('poi-description');
+        const linkEl = document.getElementById('poi-link');
+        const imageEl = document.getElementById('poi-image');
+
+        // Reset and show loader
+        content.style.display = 'none';
+        loader.style.display = 'block';
+        modal.style.display = 'block';
+
+        const enrichedPoi = await this.enrichPoiWithWikipediaData(poi);
+
+        // Populate content
+        titleEl.textContent = enrichedPoi.name;
+        linkEl.href = enrichedPoi.url;
+        linkEl.textContent = `Learn more about ${enrichedPoi.name}`;
+        descriptionEl.textContent = enrichedPoi.summary || enrichedPoi.description;
+
+        if (enrichedPoi.imageUrl) {
+            imageEl.src = enrichedPoi.imageUrl;
+            imageEl.style.display = 'block';
+        } else {
+            imageEl.style.display = 'none';
+        }
+
+        // Hide loader and show content
+        loader.style.display = 'none';
+        content.style.display = 'block';
     }
     
     async updateServices(coords) {
@@ -418,26 +647,24 @@ class LocationTrackerApp {
     }
     
     async fetchServicesFromOverpass(coords) {
-        const bboxSize = 0.03;
-        const south = coords.latitude - bboxSize;
-        const north = coords.latitude + bboxSize;
-        const west = coords.longitude - bboxSize;
-        const east = coords.longitude + bboxSize;
-        
+        const lat = coords.latitude;
+        const lon = coords.longitude;
+        const radius = 100000; // 100km radius
+
         const query = `
             [out:json][timeout:25];
             (
-              node["amenity"="fuel"](${south},${west},${north},${east});
-              node["amenity"="hospital"]["emergency"="yes"](${south},${west},${north},${east});
-              node["amenity"="hospital"]["emergency"="emergency"](${south},${west},${north},${east});
-              node["amenity"="cafe"](${south},${west},${north},${east});
-              node["amenity"="toilets"](${south},${west},${north},${east});
+              node["amenity"="fuel"](around:${radius},${lat},${lon});
+              node["amenity"="hospital"](around:${radius},${lat},${lon});
+              node["amenity"="cafe"](around:${radius},${lat},${lon});
+              node["amenity"="restaurant"](around:${radius},${lat},${lon});
+              node["amenity"="toilets"](around:${radius},${lat},${lon});
             );
             out;
         `;
         
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -467,7 +694,6 @@ class LocationTrackerApp {
             }
             
             if (node.tags.amenity === 'hospital' && 
-                (node.tags.emergency === 'yes' || node.tags.emergency === 'emergency') && 
                 (!services.hospital || distance < services.hospital.distance)) {
                 services.hospital = {
                     name: node.tags.name || 'Hospital',
@@ -477,9 +703,9 @@ class LocationTrackerApp {
                 };
             }
             
-            if (node.tags.amenity === 'cafe' && (!services.cafe || distance < services.cafe.distance)) {
+            if ((node.tags.amenity === 'cafe' || node.tags.amenity === 'restaurant') && (!services.cafe || distance < services.cafe.distance)) {
                 services.cafe = {
-                    name: node.tags.name || 'Cafe',
+                    name: node.tags.name || (node.tags.amenity === 'cafe' ? 'Cafe' : 'Restaurant'),
                     distance: distance,
                     lat: node.lat,
                     lng: node.lon
@@ -551,7 +777,7 @@ class LocationTrackerApp {
         `;
         
         const encodedQuery = encodeURIComponent(query);
-        const url = `https://overpass-api.de/api/interpreter?data=${encodedQuery}`;
+        const url = `https://overpass.kumi.systems/api/interpreter?data=${encodedQuery}`;
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -579,6 +805,31 @@ class LocationTrackerApp {
     }
     
     setupEventListeners() {
+        this.map.on('zoomend', () => {
+            if (this.isDynamicallyZooming) {
+                this.findPoisByZoomingOut();
+            }
+        });
+
+        this.map.on('dragend', () => {
+            const center = this.map.getCenter();
+            let closestPoi = null;
+            let minDistance = Infinity;
+
+            this.poiMarkers.forEach(marker => {
+                const distance = this.calculateDistance(center.lat, center.lng, marker.poiData.lat, marker.poiData.lng);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestPoi = marker.poiData;
+                }
+            });
+
+            // If user dragged close to a POI, enter explore mode
+            if (closestPoi && minDistance < 200) { // 200 meters threshold
+                this.enterExploreMode(closestPoi);
+            }
+        });
+
         document.querySelector('.close').addEventListener('click', () => {
             document.getElementById('poi-modal').style.display = 'none';
         });
@@ -598,7 +849,7 @@ class LocationTrackerApp {
             icon.addEventListener('click', (e) => {
                 const serviceData = JSON.parse(e.currentTarget.dataset.location || '{}');
                 if (serviceData.lat && serviceData.lng) {
-                    this.navigateToLocation(serviceData.lat, serviceData.lng);
+                    this.showRouteToService(serviceData);
                 }
             });
         });
@@ -623,7 +874,124 @@ class LocationTrackerApp {
     }
     
     navigateToLocation(lat, lng) {
-        this.map.setView([lat, lng], 17);
+        this.map.setView([lat, lng], 17, { animate: true, duration: 1.5 });
+    }
+
+    async fetchRoute(start, end) {
+        const startCoords = `${start.lng},${start.lat}`;
+        const endCoords = `${end.lng},${end.lat}`;
+        const url = `https://router.project-osrm.org/route/v1/driving/${startCoords};${endCoords}?overview=full&geometries=geojson`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data.code !== 'Ok') {
+                throw new Error(data.message || 'Error fetching route');
+            }
+            // OSRM returns [lon, lat], Leaflet needs [lat, lon]
+            const latlngs = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            return latlngs;
+        } catch (error) {
+            console.error('Error fetching route:', error);
+            alert('Could not fetch the route. Please try again.');
+            return null;
+        }
+    }
+
+    displayRoute(latlngs) {
+        if (this.currentRouteLayer) {
+            this.map.removeLayer(this.currentRouteLayer);
+        }
+        this.currentRouteLayer = L.polyline(latlngs, {
+            color: '#3498db',
+            weight: 5,
+            opacity: 0.8
+        }).addTo(this.map);
+        this.map.fitBounds(this.currentRouteLayer.getBounds().pad(0.1), { animate: true, duration: 1.5 });
+    }
+
+    async showRouteToService(serviceData) {
+        if (!this.currentPosition) {
+            alert('Cannot calculate route without your current location.');
+            return;
+        }
+
+        const start = {
+            lat: this.currentPosition.coords.latitude,
+            lng: this.currentPosition.coords.longitude
+        };
+        const end = {
+            lat: serviceData.lat,
+            lng: serviceData.lng
+        };
+
+        const latlngs = await this.fetchRoute(start, end);
+        if (latlngs) {
+            this.displayRoute(latlngs);
+        }
+    }
+
+    enterExploreMode(poi) {
+        console.log(`Entering explore mode for: ${poi.name}`);
+
+        // Clear any existing timer
+        if (this.exploreModeTimer) {
+            clearTimeout(this.exploreModeTimer);
+        }
+
+        // Save our real position if we're not already in explore mode
+        if (!this.realPosition) {
+            this.realPosition = this.currentPosition;
+        }
+
+        // Set a fake position based on the POI
+        const fakePosition = {
+            isFake: true,
+            coords: {
+                latitude: poi.lat,
+                longitude: poi.lng,
+                speed: 0 // We are "stopped" at the POI
+            }
+        };
+
+        // Update the UI as if we were at the POI
+        this.onLocationUpdate(fakePosition);
+
+        // Set a timer to return to our real location
+        this.exploreModeTimer = setTimeout(() => {
+            this.exitExploreMode();
+        }, 30000); // 30 seconds
+    }
+
+    exitExploreMode() {
+        console.log('Exiting explore mode.');
+        if (!this.realPosition) return;
+
+        // Restore our real position
+        this.currentPosition = this.realPosition;
+        this.realPosition = null;
+        clearTimeout(this.exploreModeTimer);
+        this.exploreModeTimer = null;
+
+        // Pan back to our real location and update the UI
+        this.map.panTo([this.currentPosition.coords.latitude, this.currentPosition.coords.longitude], { animate: true, duration: 1.5 });
+        this.onLocationUpdate(this.currentPosition);
+            return;
+        }
+
+        const start = {
+            lat: this.currentPosition.coords.latitude,
+            lng: this.currentPosition.coords.longitude
+        };
+        const end = {
+            lat: serviceData.lat,
+            lng: serviceData.lng
+        };
+
+        const latlngs = await this.fetchRoute(start, end);
+        if (latlngs) {
+            this.displayRoute(latlngs);
+        }
     }
 }
 
