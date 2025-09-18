@@ -444,7 +444,8 @@ class LocationTrackerApp {
 
         // Format is often "en:Article Title", so we split and take the last part.
         const pageTitle = wikiTag.split(':').pop().replace(/ /g, '_');
-        const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${pageTitle}&prop=extracts|pageimages&pithumbsize=400&inprop=url&redirects=&format=json&origin=*&exintro&explaintext`;
+        const encodedTitle = encodeURIComponent(pageTitle);
+        const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodedTitle}&prop=extracts|pageimages&pithumbsize=400&inprop=url&redirects=&format=json&origin=*&exintro&explaintext`;
 
         console.log(`Enriching POI: ${poi.name} from Wikipedia API`);
 
