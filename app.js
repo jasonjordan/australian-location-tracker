@@ -226,7 +226,11 @@ class LocationTrackerApp {
     }
     
     updateSpeed(speed) {
-        const speedKmh = speed * 3.6;
+        let speedKmh = speed * 3.6;
+        // Filter out GPS jitter when stationary
+        if (speedKmh < 5) {
+            speedKmh = 0;
+        }
         document.getElementById('current-speed').textContent = `${speedKmh.toFixed(1)} km/h`;
     }
     
@@ -283,12 +287,6 @@ class LocationTrackerApp {
             (
               node["wikipedia"](${south},${west},${north},${east});
               way["wikipedia"](${south},${west},${north},${east});
-              node["place"="city"](${south},${west},${north},${east});
-              node["place"="town"](${south},${west},${north},${east});
-              node["natural"="peak"](${south},${west},${north},${east});
-              node["natural"="volcano"](${south},${west},${north},${east});
-              node["waterway"="waterfall"](${south},${west},${north},${east});
-              node["waterway"="dam"](${south},${west},${north},${east});
             );
             out center;
         `;
@@ -358,12 +356,6 @@ class LocationTrackerApp {
             (
               node["wikipedia"](${south},${west},${north},${east});
               way["wikipedia"](${south},${west},${north},${east});
-              node["place"="city"](${south},${west},${north},${east});
-              node["place"="town"](${south},${west},${north},${east});
-              node["natural"="peak"](${south},${west},${north},${east});
-              node["natural"="volcano"](${south},${west},${north},${east});
-              node["waterway"="waterfall"](${south},${west},${north},${east});
-              node["waterway"="dam"](${south},${west},${north},${east});
             );
             out center;
         `;
@@ -545,8 +537,8 @@ class LocationTrackerApp {
             // The modal is shown on click, but for the closest one, we'll show a simple popup.
             closestMarker.bindPopup(`<b>${closestMarker.poiData.name}</b><br>${closestMarker.poiData.description}`).openPopup();
 
-            // Pan the map to ensure the popup is not hidden by the services bar
-            this.map.panBy([0, -100], { animate: true, duration: 1 });
+            // Pan the map to ensure the popup is not hidden by the services pill
+            this.map.panBy([150, -100], { animate: true, duration: 1.5 });
         }
     }
     

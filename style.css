@@ -159,9 +159,9 @@ body, html {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 15px;
+    gap: 10px;
     background: rgba(44, 62, 80, 0.9);
-    padding: 8px 20px;
+    padding: 5px 15px;
     position: fixed;
     bottom: 20px;
     left: 20px;
@@ -193,11 +193,11 @@ body, html {
 }
 
 .service-icon i {
-    font-size: 40px;
+    font-size: 32px;
     color: white;
     filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
     transition: all 0.3s ease;
-    width: 45px; /* To maintain layout */
+    width: 40px; /* To maintain layout */
     text-align: center;
 }
 
@@ -275,7 +275,7 @@ body, html {
     }
     
     .service-icon i {
-        font-size: 35px;
+        font-size: 30px;
     }
     
     .service-icon .distance {
@@ -301,7 +301,7 @@ body, html {
     }
     
     .service-icon i {
-        font-size: 32px;
+        font-size: 28px;
     }
     
     .service-icon .distance {
